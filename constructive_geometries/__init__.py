@@ -4,7 +4,7 @@ __all__ = (
     "resolved_row",
     "resolved_roe",
 )
-__version__ = "0.9.4"
+__version__ = "1.0"
 
 
 from .cg import ConstructiveGeometries

@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.0 (2024-09-17)
+
+* Add `RoE` handling
+
 ## 0.9.4 (2023-11-27)
 
 * Fix broken release 0.9.3
