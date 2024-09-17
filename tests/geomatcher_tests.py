@@ -2,7 +2,7 @@ from copy import deepcopy
 
 import pytest
 
-from constructive_geometries import ConstructiveGeometries, Geomatcher, resolved_row
+from constructive_geometries import ConstructiveGeometries, Geomatcher, resolved_row, resolved_roe
 
 
 def test_default_setup():
@@ -438,6 +438,36 @@ def test_intersects_row():
     ) == sorted(["LT", "LV"])
 
 
+def test_intersects_roe():
+    g = Geomatcher()
+    assert g.intersects("RoE") == []
+    assert g.intersects("RoE", include_self=True) == []
+    assert g.intersects("RoE", include_self=True, only=["NO", "LT", "RoE"]) == ["RoE"]
+    assert g.intersects(("ecoinvent", "NORDEL"), only=["NO", "RoE"]) == ["NO"]
+    assert g.intersects(
+        "NO", only=["NO", "RoE"], include_self=True, exclusive=True
+    ) == ["NO"]
+    assert g.intersects(
+        "NO", only=["NO", "RoE"], include_self=True, exclusive=False
+    ) == ["NO"]
+    assert sorted(
+        g.intersects(
+            ("ecoinvent", "BALTSO"),
+            include_self=False,
+            exclusive=True,
+            only=["RoE", "EE", "LT", "LV"],
+        )
+    ) == sorted(["EE", "LT", "LV"])
+    assert sorted(
+        g.intersects(
+            ("ecoinvent", "BALTSO"),
+            include_self=False,
+            exclusive=True,
+            only=["RoE", "LT", "LV"],
+        )
+    ) == sorted(["LT", "LV"])
+
+
 def test_contained_row():
     g = Geomatcher()
     assert g.contained("RoW") == []
@@ -447,11 +477,27 @@ def test_contained_row():
     assert "RoW" not in g.contained(("ecoinvent", "RAS"), only=["NO", "LT", "RoW"])
 
 
+def test_contained_roe():
+    g = Geomatcher()
+    assert g.contained("RoE") == []
+    assert g.contained("RoE", include_self=True, only=["RoE"]) == ["RoE"]
+    assert "RoE" not in g.contained("GLO", only=["NO", "RoE"])
+    assert "RoE" not in g.contained("GLO")
+    assert "RoE" not in g.contained(("ecoinvent", "RAS"), only=["NO", "LT", "RoE"])
+
+
 def test_within_row():
     g = Geomatcher()
     assert g.within("RoW") == ["GLO"]
     del g["GLO"]
     assert g.within("RoW") == []
+
+
+def test_within_roe():
+    g = Geomatcher()
+    assert g.within("RoE") == ["GLO"]
+    del g["GLO"]
+    assert g.within("RoE") == []
 
 
 def test_row_contextmanager_add_remove_row():
@@ -462,6 +508,15 @@ def test_row_contextmanager_add_remove_row():
         assert "RoW" in g_orig
         assert g is g_orig
     assert "RoW" not in g_orig
+
+
+def test_roe_contextmanager_add_remove_roe():
+    g_orig = Geomatcher()
+    assert "RoE" not in g_orig
+    with resolved_roe(["NO", "LT", "EE"], g_orig) as g:
+        assert "RoE" in g
+        assert "RoE" in g_orig
+    assert "RoE" not in g_orig
 
 
 def test_row_contextmanager_datasets_or_locations():
@@ -477,10 +532,29 @@ def test_row_contextmanager_datasets_or_locations():
         assert "RoW" in g.intersects(("ecoinvent", "BALTSO"))
 
 
+def test_roe_contextmanager_datasets_or_locations():
+    g_orig = Geomatcher()
+    with resolved_roe(["LT", "EE"], g_orig) as g:
+        assert "RoE" in g.intersects(("ecoinvent", "BALTSO"))
+    given = [
+        {"location": "NO"},
+        {"location": "LT"},
+        {"location": "EE"},
+    ]
+    with resolved_roe(given, g_orig) as g:
+        assert "RoE" in g.intersects(("ecoinvent", "BALTSO"))
+
+
 def test_row_contextmanager_intersects():
     g_orig = Geomatcher()
     with resolved_row(["NO", "LT", "EE"], g_orig) as g:
         assert "RoW" in g.intersects(("ecoinvent", "BALTSO"))
+
+
+def test_roe_contextmanager_intersects():
+    g_orig = Geomatcher()
+    with resolved_roe(["NO", "LT", "EE"], g_orig) as g:
+        assert "RoE" in g.intersects(("ecoinvent", "BALTSO"))
 
 
 def test_row_contextmanager_contained():
@@ -489,6 +563,14 @@ def test_row_contextmanager_contained():
         assert "RoW" not in g.contained(("ecoinvent", "BALTSO"))
         assert "LT" in g.contained(("ecoinvent", "BALTSO"))
         assert "RoW" in g.contained("GLO")
+
+
+def test_roe_contextmanager_contained():
+    g_orig = Geomatcher()
+    with resolved_roe(["NO", "LT", "EE"], g_orig) as g:
+        assert "RoE" not in g.contained(("ecoinvent", "BALTSO"))
+        assert "LT" in g.contained(("ecoinvent", "BALTSO"))
+        assert "RoE" in g.contained("GLO")
 
 
 def test_row_contextmanager_within():

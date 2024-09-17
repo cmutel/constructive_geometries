@@ -1,7 +1,6 @@
 import hashlib
 import itertools
 import json
-import os
 from functools import reduce
 from multiprocessing import Pool, cpu_count
 from pathlib import Path
@@ -41,6 +40,7 @@ def has_gis(wrapped, instance, args, kwargs):
 
 
 DATA_FILEPATH = Path(__file__).parent.resolve() / "data"
+EUROPE = json.load(open(DATA_FILEPATH / "europe.json"))
 
 
 def sha256(filepath: Path, blocksize: int = 65536) -> str:
@@ -110,6 +110,39 @@ class ConstructiveGeometries:
             self.data[key] = []
             self.locations.add(key)
 
+    def construct_rest_of_europe(
+        self,
+        excluded: list[str],
+        name: str = None,
+        fp: Path | None = None,
+        geom: bool = True,
+    ) -> Path | Geometry:
+        """
+        Construct rest-of-europe geometry and optionally write to filepath ``fp``.
+
+        Excludes faces in location list ``excluded``. ``excluded`` must be an iterable of location strings (not face ids).
+        """
+        european_faces = set.union(*[set(self.data[loc]) for loc in EUROPE])
+
+        for location in excluded:
+            assert location in EUROPE, f"Can't find location {location} in our definition of Europe"
+        included = european_faces.difference(
+            set().union(*[set(self.data[loc]) for loc in excluded])
+        )
+
+        if not geom:
+            return included
+        elif not gis:
+            warn(MISSING_GIS)
+            return
+
+        geom = _union(None, self.faces_fp, included)[1]
+        if fp:
+            self.write_geoms_to_file(fp, [geom], [name] if name else None)
+            return fp
+        else:
+            return geom
+
     def construct_rest_of_world(
         self,
         excluded: list[str],
@@ -117,7 +150,8 @@ class ConstructiveGeometries:
         fp: Path | None = None,
         geom: bool = True,
     ) -> Path | Geometry:
-        """Construct rest-of-world geometry and optionally write to filepath ``fp``.
+        """
+        Construct rest-of-world geometry and optionally write to filepath ``fp``.
 
         Excludes faces in location list ``excluded``. ``excluded`` must be an iterable of location strings (not face ids).
         """

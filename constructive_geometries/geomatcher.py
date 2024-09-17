@@ -1,11 +1,16 @@
 from collections.abc import MutableMapping
 from contextlib import contextmanager
 from functools import reduce
+from pathlib import Path
 from typing import Iterable
+import json
 
 import country_converter as coco
 
 from . import ConstructiveGeometries
+
+DATA_FILEPATH = Path(__file__).parent.resolve() / "data"
+EUROPE = json.load(open(DATA_FILEPATH / "europe.json"))
 
 
 class Geomatcher(MutableMapping):
@@ -53,7 +58,7 @@ class Geomatcher(MutableMapping):
             self.default_namespace = "ecoinvent"
 
             def ns(x):
-                if len(x) == 2 or x == "RoW":
+                if len(x) == 2 or x == "RoW" or x == "RoE":
                     return x
                 else:
                     return ("ecoinvent", x)
@@ -78,6 +83,8 @@ class Geomatcher(MutableMapping):
     def __getitem__(self, key: str) -> list:
         if key == "RoW" and "RoW" not in self.topology:
             return set()
+        if key == "RoE" and "RoE" not in self.topology:
+            return set()
         return self.topology[self._actual_key(key)]
 
     def __setitem__(self, key: str, value: list) -> None:
@@ -98,7 +105,7 @@ class Geomatcher(MutableMapping):
 
     def _actual_key(self, key: str | tuple) -> str | tuple:
         """Translate provided key into the key used in the topology. Tries the unmodified key, the key with the default namespace, and the country converter. Raises a ``KeyError`` if none of these finds a suitable definition in ``self.topology``."""
-        if key in self or key in ("RoW", "GLO"):
+        if key in self or key in ("RoW", "RoE", "GLO"):
             return key
         elif (self.default_namespace, key) in self:
             return (self.default_namespace, key)
@@ -134,6 +141,8 @@ class Geomatcher(MutableMapping):
         # RoW in both key and lst, but not defined; only RoW remains if exclusive
         if key == "RoW" and "RoW" not in self and exclusive:
             return ["RoW"] if "RoW" in lst else []
+        elif key == "RoE" and "RoE" not in self and exclusive:
+            return ["RoE"] if "RoE" in lst else []
         elif exclusive:
             removed, remaining = set(), []
             while lst:
@@ -147,6 +156,8 @@ class Geomatcher(MutableMapping):
         # If RoW not resolved, make it the smallest
         if "RoW" not in self and "RoW" in lst:
             lst[-1 if biggest_first else 0] = lst.pop(lst.index("RoW"))
+        if "RoE" not in self and "RoE" in lst:
+            lst[-1 if biggest_first else 0] = lst.pop(lst.index("RoE"))
 
         return lst
 
@@ -169,6 +180,8 @@ class Geomatcher(MutableMapping):
 
         if key == "RoW" and "RoW" not in self:
             return ["RoW"] if "RoW" in possibles else []
+        if key == "RoE" and "RoE" not in self:
+            return ["RoE"] if "RoE" in possibles else []
 
         faces = self[key]
         lst = [
@@ -188,7 +201,7 @@ class Geomatcher(MutableMapping):
     ) -> list:
         """Get all locations that are completely within this location.
 
-        If the ``resolved_row`` context manager is not used, ``RoW`` doesn't have a spatial definition. Therefore, ``.contained("RoW")`` returns a list with either ``RoW`` or nothing.
+        If the ``resolved_row`` context manager is not used, ``RoW`` and ``RoW`` doesn't have a spatial definition. Therefore, ``.contained("RoW")`` returns a list with either ``RoW`` or nothing.
 
         """
         if "RoW" not in self:
@@ -196,6 +209,11 @@ class Geomatcher(MutableMapping):
                 return ["RoW"] if "RoW" in (only or []) else []
             elif only and "RoW" in only:
                 only.pop(only.index("RoW"))
+        if "RoE" not in self:
+            if key == "RoE":
+                return ["RoE"] if "RoE" in (only or []) else []
+            elif only and "RoE" in only:
+                only.pop(only.index("RoE"))
 
         possibles = self.topology if only is None else {k: self[k] for k in only}
 
@@ -220,6 +238,9 @@ class Geomatcher(MutableMapping):
         _ = lambda key: [key] if key in possibles else []
         if "RoW" not in self and key == "RoW":
             answer = [] + _("RoW") + _("GLO")
+            return list(reversed(answer)) if biggest_first else answer
+        if "RoE" not in self and key == "RoE":
+            answer = [] + _("RoE") + _("GLO")
             return list(reversed(answer)) if biggest_first else answer
 
         faces = self[key]
@@ -294,6 +315,14 @@ class Geomatcher(MutableMapping):
             )
 
 
+def get_locations(lst):
+    for elem in lst:
+        try:
+            yield elem["location"]
+        except TypeError:
+            yield elem
+
+
 @contextmanager
 def resolved_row(objs, geomatcher):
     """Temporarily insert ``RoW`` into ``geomatcher.topology``, defined by the topo faces not used in ``objs``.
@@ -302,15 +331,25 @@ def resolved_row(objs, geomatcher):
 
     On exiting the context manager, ``RoW`` is deleted."""
 
-    def get_locations(lst):
-        for elem in lst:
-            try:
-                yield elem["location"]
-            except TypeError:
-                yield elem
-
     geomatcher["RoW"] = geomatcher.faces.difference(
         reduce(set.union, [geomatcher[obj] for obj in get_locations(objs)])
     )
     yield geomatcher
     del geomatcher["RoW"]
+
+
+@contextmanager
+def resolved_roe(objs, geomatcher):
+    """Temporarily insert ``RoE`` into ``geomatcher.topology``, defined by the topo faces not used in ``objs``.
+
+    Will overwrite any existing ``RoE``.
+
+    On exiting the context manager, ``RoE`` is deleted."""
+
+    geomatcher["RoE"] = (
+        reduce(set.union, [geomatcher[obj] for obj in EUROPE]).difference(
+            reduce(set.union, [geomatcher[obj] for obj in get_locations(objs)])
+        )
+    )
+    yield geomatcher
+    del geomatcher["RoE"]
